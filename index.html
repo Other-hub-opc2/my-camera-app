@@ -36,15 +36,17 @@
     const CameraApp = () => {
       const fileInputRef = useRef(null);
       const [photo, setPhoto] = useState(null);
-      const [isProcessing, setIsProcessing] = useState(false);
-      const [isSubmitting, setIsSubmitting] = useState(false);
+      const [isProcessing, setIsProcessing] = useState(false); // สถานะกำลังบีบอัดรูป
+      const [isSubmitting, setIsSubmitting] = useState(false); // สถานะกำลังส่งไป GAS
 
+      // ฟังก์ชันเปิดแอปกล้องดั้งเดิมของมือถือ
       const openNativeCamera = () => {
         if (fileInputRef.current) {
           fileInputRef.current.click();
         }
       };
 
+      // ฟังก์ชันจัดการเมื่อถ่ายรูปเสร็จและได้ไฟล์มา
       const handleFileChange = (event) => {
         const file = event.target.files[0];
         if (!file) return;
@@ -55,11 +57,15 @@
         reader.onload = (e) => {
           const img = new Image();
           img.onload = () => {
+            // สร้าง Canvas เพื่อทำการ Resize และ Compress
             const canvas = document.createElement('canvas');
+            
+            // กำหนดขนาดสูงสุด (Max Width/Height) เป็น 1024px เพื่อให้ไฟล์เล็กและคมชัดพอ
             const MAX_DIMENSION = 1024;
             let width = img.width;
             let height = img.height;
 
+            // คำนวณสัดส่วนใหม่
             if (width > height) {
               if (width > MAX_DIMENSION) {
                 height = Math.round((height * MAX_DIMENSION) / width);
@@ -78,11 +84,13 @@
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, width, height);
 
+            // บีบอัดคุณภาพเหลือ 70% (0.7)
             const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
             
             setPhoto(compressedDataUrl);
             setIsProcessing(false);
             
+            // ล้างค่า input เพื่อให้สามารถถ่ายรูปเดิมซ้ำได้ในกรณีที่ต้องการ
             event.target.value = '';
           };
           img.src = e.target.result;
@@ -100,17 +108,18 @@
         if (photo && !isSubmitting) {
           setIsSubmitting(true); 
           
-          // แก้ไขให้รับทุก Domain เพื่อแก้ปัญหา Iframe ไม่ทะลุใน GAS
+          // ส่งกลับไปให้ GAS
           window.parent.postMessage({
             type: 'CAMERA_SUCCESS',
             payload: photo
-          }, '*');
+          }, 'https://script.google.com');
         }
       };
 
       return (
         <div className="h-screen w-screen flex flex-col bg-black relative">
           
+          {/* ซ่อน Input แบบ Native Camera ไว้ */}
           <input 
             type="file" 
             accept="image/*" 
@@ -122,6 +131,7 @@
 
           <div className="flex-1 relative overflow-hidden flex items-center justify-center bg-slate-900/50">
             {!photo ? (
+              // หน้าจอก่อนถ่ายภาพ หรือตอนกำลังรอรูป
               <div className="text-center flex flex-col items-center justify-center px-6">
                 {isProcessing ? (
                   <div className="flex flex-col items-center text-slate-300">
@@ -140,6 +150,7 @@
                 )}
               </div>
             ) : (
+              // แสดงรูปที่ถ่ายเสร็จและบีบอัดแล้ว
               <img 
                 src={photo} 
                 className="absolute inset-0 w-full h-full object-contain" 
@@ -148,6 +159,7 @@
             )}
           </div>
 
+          {/* ส่วนของแถบปุ่มกดด้านล่าง */}
           <div className="h-32 bg-black pb-8 pt-4 flex items-center justify-center px-8 shrink-0 border-t border-slate-800">
             {!photo ? (
               <button onClick={openNativeCamera} disabled={isProcessing} className={`camera-button flex flex-col items-center justify-center text-white ${isProcessing ? 'opacity-50' : ''}`}>
