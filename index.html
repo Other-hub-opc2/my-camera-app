@@ -12,140 +12,133 @@
     body { margin: 0; padding: 0; background-color: #000; color: white; font-family: sans-serif; overflow: hidden; }
     * { touch-action: manipulation; }
     .camera-button {
-      width: 72px; height: 72px; border-radius: 50%; background-color: white; border: 4px solid #cbd5e1;
-      display: flex; justify-content: center; align-items: center; cursor: pointer; transition: transform 0.1s;
+      width: 80px; height: 80px; border-radius: 50%; background-color: #3b82f6; 
+      display: flex; justify-content: center; align-items: center; cursor: pointer; 
+      transition: transform 0.1s, background-color 0.2s;
+      box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
     }
-    .camera-button:active { transform: scale(0.9); background-color: #f8fafc; }
+    .camera-button:active { transform: scale(0.95); background-color: #2563eb; }
   </style>
 </head>
 <body>
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
+    const { useState, useRef } = React;
 
     const Icons = {
       Check: ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
       Refresh: ({ size = 24, className = "" }) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>,
-      CameraOff: ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="2" y1="2" x2="22" y2="22"/><path d="M10.41 10.41a2 2 0 0 0 2.18 2.18"/><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9c0 .55.22 1.05.59 1.41"/><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/></svg>,
+      Camera: ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9c0 1.1.9 2 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>,
       Loader: ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
     };
 
     const CameraApp = () => {
-      const videoRef = useRef(null);
-      const canvasRef = useRef(null);
+      const fileInputRef = useRef(null);
       const [photo, setPhoto] = useState(null);
-      const [hasError, setHasError] = useState(false);
-      const [stream, setStream] = useState(null);
-      const [isSubmitting, setIsSubmitting] = useState(false); // เพิ่ม State เช็คการกดซ้ำ
+      const [isProcessing, setIsProcessing] = useState(false);
+      const [isSubmitting, setIsSubmitting] = useState(false);
 
-      const startCamera = async () => {
-        try {
-          if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            const mediaStream = await navigator.mediaDevices.getUserMedia({
-              video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-              audio: false
-            });
-            if (videoRef.current) {
-              videoRef.current.srcObject = mediaStream;
+      const openNativeCamera = () => {
+        if (fileInputRef.current) {
+          fileInputRef.current.click();
+        }
+      };
+
+      const handleFileChange = (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        setIsProcessing(true);
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_DIMENSION = 1024;
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+              if (width > MAX_DIMENSION) {
+                height = Math.round((height * MAX_DIMENSION) / width);
+                width = MAX_DIMENSION;
+              }
+            } else {
+              if (height > MAX_DIMENSION) {
+                width = Math.round((width * MAX_DIMENSION) / height);
+                height = MAX_DIMENSION;
+              }
             }
-            setStream(mediaStream);
-            setHasError(false);
-          } else {
-            setHasError(true);
-          }
-        } catch (err) {
-          console.error("Camera access error:", err);
-          setHasError(true);
-        }
-      };
 
-      const stopCamera = () => {
-        if (stream) {
-          stream.getTracks().forEach(track => track.stop());
-        }
-      };
+            canvas.width = width;
+            canvas.height = height;
 
-      useEffect(() => {
-        startCamera();
-        return () => stopCamera();
-      }, []);
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
 
-      const takePhoto = () => {
-        if (videoRef.current && canvasRef.current) {
-          const video = videoRef.current;
-          const canvas = canvasRef.current;
-          
-          // 1. กำหนดขนาดสูงสุด เพื่อป้องกันไฟล์ใหญ่เกินไป ส่งผ่าน GAS ได้เร็วขึ้น
-          const MAX_WIDTH = 1024;
-          let width = video.videoWidth;
-          let height = video.videoHeight;
-          
-          if (width > MAX_WIDTH) {
-            height = Math.round((height * MAX_WIDTH) / width);
-            width = MAX_WIDTH;
-          }
-          
-          canvas.width = width;
-          canvas.height = height;
-          
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(video, 0, 0, width, height);
-          
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-          setPhoto(dataUrl);
-          
-          stopCamera();
-        }
+            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+            
+            setPhoto(compressedDataUrl);
+            setIsProcessing(false);
+            
+            event.target.value = '';
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
       };
 
       const retakePhoto = () => {
-        if (isSubmitting) return; // ล็อกปุ่มถ้ากำลังส่งข้อมูล
+        if (isSubmitting) return;
         setPhoto(null);
-        setIsSubmitting(false);
-        startCamera();
+        openNativeCamera();
       };
 
       const confirmPhoto = () => {
-        // 2. ป้องกันการกดยืนยันซ้ำ
         if (photo && !isSubmitting) {
           setIsSubmitting(true); 
           
-          // 3. ระบุ Domain สำหรับ Google Apps Script เพื่อความปลอดภัย
+          // แก้ไขให้รับทุก Domain เพื่อแก้ปัญหา Iframe ไม่ทะลุใน GAS
           window.parent.postMessage({
             type: 'CAMERA_SUCCESS',
             payload: photo
-          }, 'https://script.google.com');
-
-          // หมายเหตุ: หากใช้งานจริงในโหมดเผยแพร่ของ GAS แล้วเจอปัญหา iframe origin เปลี่ยน 
-          // สามารถเปลี่ยนกลับเป็น '*' ได้ แต่ตรวจสอบความถูกต้องข้อมูลในฝั่ง GAS เสมอ
+          }, '*');
         }
       };
-
-      if (hasError) {
-        return (
-          <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center space-y-4">
-            <div className="bg-red-500/20 p-6 rounded-full text-red-500"><Icons.CameraOff size={48} /></div>
-            <h2 className="text-xl font-bold">ไม่สามารถเข้าถึงกล้องได้</h2>
-            <p className="text-slate-400 text-sm">กรุณาตรวจสอบว่าคุณได้อนุญาตให้เว็บไซต์ใช้งานกล้องถ่ายรูปได้ หรือเปิดผ่านเบราว์เซอร์ที่รองรับ</p>
-          </div>
-        );
-      }
 
       return (
         <div className="h-screen w-screen flex flex-col bg-black relative">
           
-          <canvas ref={canvasRef} className="hidden"></canvas>
+          <input 
+            type="file" 
+            accept="image/*" 
+            capture="environment" 
+            ref={fileInputRef} 
+            onChange={handleFileChange}
+            className="hidden"
+          />
 
-          <div className="flex-1 relative overflow-hidden flex items-center justify-center">
+          <div className="flex-1 relative overflow-hidden flex items-center justify-center bg-slate-900/50">
             {!photo ? (
-              <video 
-                ref={videoRef} 
-                autoPlay 
-                playsInline 
-                muted 
-                className="absolute inset-0 w-full h-full object-cover"
-              />
+              <div className="text-center flex flex-col items-center justify-center px-6">
+                {isProcessing ? (
+                  <div className="flex flex-col items-center text-slate-300">
+                    <Icons.Loader size={48} />
+                    <p className="mt-4 font-bold text-lg">กำลังประมวลผลภาพ...</p>
+                    <p className="text-xs text-slate-500 mt-1">ทำการบีบอัดเพื่อส่งเข้าระบบ</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center">
+                    <div className="w-24 h-24 bg-slate-800 rounded-full flex items-center justify-center text-slate-400 mb-6">
+                      <Icons.Camera size={40} />
+                    </div>
+                    <h2 className="text-xl font-bold text-white mb-2">ระบบถ่ายภาพโลจิสติกส์</h2>
+                    <p className="text-slate-400 text-sm max-w-xs">กดปุ่มด้านล่างเพื่อเปิดกล้องมือถือ ถ่ายรูปสินค้า หรือเอกสารจัดส่ง</p>
+                  </div>
+                )}
+              </div>
             ) : (
               <img 
                 src={photo} 
@@ -153,16 +146,12 @@
                 alt="Captured Preview" 
               />
             )}
-            
-            <div className="absolute top-4 left-4 bg-black/50 backdrop-blur px-3 py-1 rounded-full text-[10px] text-white/70 font-mono">
-              Live Camera System
-            </div>
           </div>
 
-          <div className="h-32 bg-black pb-8 pt-4 flex items-center justify-center px-8 shrink-0">
+          <div className="h-32 bg-black pb-8 pt-4 flex items-center justify-center px-8 shrink-0 border-t border-slate-800">
             {!photo ? (
-              <button onClick={takePhoto} className="camera-button shadow-lg shadow-white/20">
-                <div className="w-14 h-14 bg-white rounded-full border border-slate-200"></div>
+              <button onClick={openNativeCamera} disabled={isProcessing} className={`camera-button flex flex-col items-center justify-center text-white ${isProcessing ? 'opacity-50' : ''}`}>
+                <Icons.Camera size={32} />
               </button>
             ) : (
               <div className="w-full flex items-center justify-between px-4 max-w-sm mx-auto">
