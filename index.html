@@ -27,45 +27,36 @@
     const { useState, useRef } = React;
 
     const Icons = {
-      Check: ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
-      Refresh: ({ size = 24, className = "" }) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>,
       Camera: ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9c0 1.1.9 2 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>,
       Loader: ({ size = 24 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
     };
 
     const CameraApp = () => {
       const fileInputRef = useRef(null);
-      const [photo, setPhoto] = useState(null);
-      const [isProcessing, setIsProcessing] = useState(false); // สถานะกำลังบีบอัดรูป
-      const [isSubmitting, setIsSubmitting] = useState(false); // สถานะกำลังส่งไป GAS
+      const [isProcessing, setIsProcessing] = useState(false);
 
-      // ฟังก์ชันเปิดแอปกล้องดั้งเดิมของมือถือ
       const openNativeCamera = () => {
         if (fileInputRef.current) {
           fileInputRef.current.click();
         }
       };
 
-      // ฟังก์ชันจัดการเมื่อถ่ายรูปเสร็จและได้ไฟล์มา
       const handleFileChange = (event) => {
         const file = event.target.files[0];
         if (!file) return;
 
+        // แสดงหน้าโหลดหมุนๆ
         setIsProcessing(true);
 
         const reader = new FileReader();
         reader.onload = (e) => {
           const img = new Image();
           img.onload = () => {
-            // สร้าง Canvas เพื่อทำการ Resize และ Compress
             const canvas = document.createElement('canvas');
-            
-            // กำหนดขนาดสูงสุด (Max Width/Height) เป็น 1024px เพื่อให้ไฟล์เล็กและคมชัดพอ
             const MAX_DIMENSION = 1024;
             let width = img.width;
             let height = img.height;
 
-            // คำนวณสัดส่วนใหม่
             if (width > height) {
               if (width > MAX_DIMENSION) {
                 height = Math.round((height * MAX_DIMENSION) / width);
@@ -84,42 +75,22 @@
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, width, height);
 
-            // บีบอัดคุณภาพเหลือ 70% (0.7)
             const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
             
-            setPhoto(compressedDataUrl);
-            setIsProcessing(false);
-            
-            // ล้างค่า input เพื่อให้สามารถถ่ายรูปเดิมซ้ำได้ในกรณีที่ต้องการ
-            event.target.value = '';
+            // ส่งกลับไปที่ GAS ทันทีที่บีบอัดเสร็จ ยิงข้อมูลไปที่ทุกโดเมน '*'
+            window.parent.postMessage({
+              type: 'CAMERA_SUCCESS',
+              payload: compressedDataUrl
+            }, '*');
           };
           img.src = e.target.result;
         };
         reader.readAsDataURL(file);
       };
 
-      const retakePhoto = () => {
-        if (isSubmitting) return;
-        setPhoto(null);
-        openNativeCamera();
-      };
-
-      const confirmPhoto = () => {
-        if (photo && !isSubmitting) {
-          setIsSubmitting(true); 
-          
-          // ส่งกลับไปให้ GAS
-          window.parent.postMessage({
-            type: 'CAMERA_SUCCESS',
-            payload: photo
-          }, 'https://script.google.com');
-        }
-      };
-
       return (
         <div className="h-screen w-screen flex flex-col bg-black relative">
           
-          {/* ซ่อน Input แบบ Native Camera ไว้ */}
           <input 
             type="file" 
             accept="image/*" 
@@ -130,68 +101,29 @@
           />
 
           <div className="flex-1 relative overflow-hidden flex items-center justify-center bg-slate-900/50">
-            {!photo ? (
-              // หน้าจอก่อนถ่ายภาพ หรือตอนกำลังรอรูป
-              <div className="text-center flex flex-col items-center justify-center px-6">
-                {isProcessing ? (
-                  <div className="flex flex-col items-center text-slate-300">
-                    <Icons.Loader size={48} />
-                    <p className="mt-4 font-bold text-lg">กำลังประมวลผลภาพ...</p>
-                    <p className="text-xs text-slate-500 mt-1">ทำการบีบอัดเพื่อส่งเข้าระบบ</p>
+            <div className="text-center flex flex-col items-center justify-center px-6">
+              {isProcessing ? (
+                <div className="flex flex-col items-center text-slate-300">
+                  <Icons.Loader size={48} />
+                  <p className="mt-4 font-bold text-lg">กำลังประมวลผลและส่งภาพ...</p>
+                  <p className="text-xs text-slate-500 mt-1">กรุณารอสักครู่...</p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center">
+                  <div className="w-24 h-24 bg-slate-800 rounded-full flex items-center justify-center text-slate-400 mb-6">
+                    <Icons.Camera size={40} />
                   </div>
-                ) : (
-                  <div className="flex flex-col items-center">
-                    <div className="w-24 h-24 bg-slate-800 rounded-full flex items-center justify-center text-slate-400 mb-6">
-                      <Icons.Camera size={40} />
-                    </div>
-                    <h2 className="text-xl font-bold text-white mb-2">ระบบถ่ายภาพโลจิสติกส์</h2>
-                    <p className="text-slate-400 text-sm max-w-xs">กดปุ่มด้านล่างเพื่อเปิดกล้องมือถือ ถ่ายรูปสินค้า หรือเอกสารจัดส่ง</p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              // แสดงรูปที่ถ่ายเสร็จและบีบอัดแล้ว
-              <img 
-                src={photo} 
-                className="absolute inset-0 w-full h-full object-contain" 
-                alt="Captured Preview" 
-              />
-            )}
+                  <h2 className="text-xl font-bold text-white mb-2">ระบบถ่ายภาพโลจิสติกส์</h2>
+                  <p className="text-slate-400 text-sm max-w-xs">กดปุ่มด้านล่างเพื่อเปิดกล้องมือถือ ถ่ายรูปสินค้า หรือเอกสารจัดส่ง</p>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* ส่วนของแถบปุ่มกดด้านล่าง */}
           <div className="h-32 bg-black pb-8 pt-4 flex items-center justify-center px-8 shrink-0 border-t border-slate-800">
-            {!photo ? (
-              <button onClick={openNativeCamera} disabled={isProcessing} className={`camera-button flex flex-col items-center justify-center text-white ${isProcessing ? 'opacity-50' : ''}`}>
-                <Icons.Camera size={32} />
-              </button>
-            ) : (
-              <div className="w-full flex items-center justify-between px-4 max-w-sm mx-auto">
-                <button 
-                  onClick={retakePhoto} 
-                  disabled={isSubmitting}
-                  className={`flex flex-col items-center transition-colors ${isSubmitting ? 'text-slate-600 opacity-50 cursor-not-allowed' : 'text-slate-300 hover:text-white'}`}
-                >
-                  <div className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center mb-1">
-                    <Icons.Refresh size={20} />
-                  </div>
-                  <span className="text-[10px] font-bold">ถ่ายใหม่</span>
-                </button>
-                
-                <button 
-                  onClick={confirmPhoto} 
-                  disabled={isSubmitting}
-                  className={`flex flex-col items-center transition-all duration-300 ${isSubmitting ? 'text-emerald-700 cursor-wait' : 'text-emerald-400 hover:text-emerald-300'}`}
-                >
-                  <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-1 text-white transition-colors duration-300 ${isSubmitting ? 'bg-emerald-800' : 'bg-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.4)]'}`}>
-                    {isSubmitting ? <Icons.Loader size={32} /> : <Icons.Check size={32} />}
-                  </div>
-                  <span className={`text-xs font-bold ${isSubmitting ? 'text-emerald-600' : 'text-emerald-500'}`}>
-                    {isSubmitting ? 'กำลังส่งข้อมูล...' : 'ใช้รูปนี้'}
-                  </span>
-                </button>
-              </div>
-            )}
+            <button onClick={openNativeCamera} disabled={isProcessing} className={`camera-button flex flex-col items-center justify-center text-white ${isProcessing ? 'opacity-50' : ''}`}>
+              <Icons.Camera size={32} />
+            </button>
           </div>
           
         </div>
